@@ -1,0 +1,53 @@
+version: "3.8"
+
+services:
+  prom-app:
+    image: ghcr.io/felixtron/prom-app:latest
+    container_name: prom-app
+    restart: unless-stopped
+    read_only: false  # Next.js requiere escribir cache en runtime
+    environment:
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      - OPENCODE_API_KEY=***ROTAR-OPENCODE-KEY***
+      - OPENCODE_DEFAULT_MODEL=opencode/kimi-k2.6
+    networks:
+      - dokploy-network
+    
+    # Límites de Recursos estrictos para evitar desbordes (Directiva ProSuite)
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: "512M"
+    
+    # Rotación de Logs (Directiva ProSuite)
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    
+    # Healthcheck para Traefik
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/api/auth/login', (r) => r.statusCode === 200 ? process.exit(0) : process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+    # Etiquetas Traefik para el Enrutamiento e Identificación OCI
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.prom-app.rule=Host(`prom.prosuite.pro`)"
+      - "traefik.http.routers.prom-app.entrypoints=websecure"
+      - "traefik.http.routers.prom-app.tls=true"
+      - "traefik.http.routers.prom-app.tls.certresolver=letsencrypt"
+      - "traefik.http.services.prom-app.loadbalancer.server.port=3000"
+      - "org.prosuite.client=prosuite"
+      - "org.prosuite.role=marketing"
+      - "org.prosuite.author=felix"
+
+networks:
+  dokploy-network:
+    external: true
