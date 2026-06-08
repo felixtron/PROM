@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { validateAuthHeaders } from '@/lib/auth';
-import { analyzeCampaignMetrics } from '@/lib/ai-advisor';
+import { validateAuthHeaders } from '../../../lib/auth';
+import { analyzeCampaignMetrics } from '../../../lib/ai-advisor';
 
 /**
  * Handler POST para delegar el análisis de pauta de forma real a Kimi-k2.6 usando OpenCode CLI.
@@ -14,7 +14,7 @@ export async function POST(request: Request) {
     });
 
     // 2. Validar autenticación
-    validateAuthHeaders(headersList);
+    const session = validateAuthHeaders(headersList);
 
     // 3. Procesar cuerpo del payload
     const body = await request.json();
@@ -24,8 +24,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: 'Métricas ausentes.' }, { status: 400 });
     }
 
-    // 4. Invocar el análisis del consultor de IA
-    const result = await analyzeCampaignMetrics(metrics);
+    // 4. Invocar el análisis del consultor de IA pasando el Tenant ID para contextualizar la marca
+    const result = await analyzeCampaignMetrics(metrics, session.tenantId);
 
     return NextResponse.json(result);
   } catch (error: any) {

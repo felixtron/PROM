@@ -1,0 +1,28 @@
+{
+  "tenant-1-alpha": {
+    "id": "tenant-1-alpha",
+    "name": "Cliente Alpha (ProSuite BPM & Cloud)",
+    "brandIdentity": "Líder en ERP Cloud para pymes",
+    "toneOfVoice": "Casual",
+    "brandBookText": "Paleta de colores: Índigo #4F46E5, Gris pizarra #1E293B. Logo en formato horizontal siempre en fondos oscuros. Tipografía sans-serif limpia. Prohibido usar expresiones informales o promesas de cero costo. Enfatizar el ahorro de tiempo operativo de hasta un 40%.",
+    "activeBrief": {
+      "objective": "Incrementar descargas del Whitepaper de automatización",
+      "audience": "Gerentes de TI y CTOs en Bogotá",
+      "budget": 800,
+      "kpis": "CPA de registro de $5.00 USD"
+    }
+  },
+  "tenant-2-beta": {
+    "id": "tenant-2-beta",
+    "name": "Cliente Beta (Finanzas Corporativas)",
+    "brandIdentity": "Consultora boutique de planeación financiera estratégica, fusiones y adquisiciones (M&A) y estructuración de deuda corporativa.",
+    "toneOfVoice": "Technical",
+    "brandBookText": "GUIA DE DISEÑO: Usar sólo colores pastel. Tipografía Arial.",
+    "activeBrief": {
+      "objective": "Generación de prospectos (MQLs) calificados para consultoría de reestructuración financiera.",
+      "audience": "CFOs, Directores de Finanzas, Socios y Accionistas de medianas empresas industriales facturando más de 50M MXN anuales.",
+      "budget": 2500,
+      "kpis": "Costo por click (CPC) de Google Search menor a $2.5 USD. Tasa de conversión de landing mayor al 3.5%."
+    }
+  }
+}
