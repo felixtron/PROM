@@ -1,5 +1,37 @@
-import { execSync } from 'child_process';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import * as fs from 'fs';
 import { getTenantContext } from './db';
+
+const execFileAsync = promisify(execFile);
+
+/**
+ * Parsea un archivo de entorno (KEY=VALUE) y lo devuelve como objeto, sin pasar
+ * por un shell. Reemplaza el inseguro `source ${envPath}` que permitía inyección.
+ */
+function loadEnvFile(envPath: string): Record<string, string> {
+  const result: Record<string, string> = {};
+  try {
+    if (!fs.existsSync(envPath)) return result;
+    const content = fs.readFileSync(envPath, 'utf-8');
+    for (const line of content.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eq = trimmed.indexOf('=');
+      if (eq === -1) continue;
+      const key = trimmed.slice(0, eq).trim();
+      let value = trimmed.slice(eq + 1).trim();
+      // Quitar comillas envolventes si las hubiera
+      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1);
+      }
+      if (key) result[key] = value;
+    }
+  } catch (e) {
+    console.error('No se pudo leer el archivo de entorno del Advisor:', e);
+  }
+  return result;
+}
 
 export interface CampaignMetrics {
   impressions: number;
@@ -72,13 +104,24 @@ Instrucciones de análisis:
 }`;
 
   try {
-    const envPath = '/opt/data/.opencode.env';
-    // Escapar comillas dobles y caracteres especiales
-    const escapedPrompt = prompt.replace(/"/g, '\\"').replace(/`/g, '\\`');
-    const command = `source ${envPath} && opencode run "${escapedPrompt}" --model opencode/kimi-k2.6 --max-turns 1`;
+    const envPath = process.env.OPENCODE_ENV_PATH || '/opt/data/.opencode.env';
 
-    // Ejecutar el comando de OpenCode de forma síncrona
-    const stdout = execSync(command, { shell: '/bin/bash', encoding: 'utf-8' });
+    // SEGURIDAD: el prompt contiene datos controlados por el cliente (brandBookText,
+    // brandIdentity, etc.). NUNCA debe interpolarse en una línea de comando de shell.
+    // Usamos execFile (sin shell) pasando el prompt como un único argumento argv,
+    // por lo que metacaracteres como $(...), `...`, ;, |, & no se interpretan.
+    const childEnv = { ...process.env, ...loadEnvFile(envPath) };
+
+    const { stdout } = await execFileAsync(
+      'opencode',
+      ['run', prompt, '--model', 'opencode/kimi-k2.6', '--max-turns', '1'],
+      {
+        env: childEnv,
+        encoding: 'utf-8',
+        timeout: 30000,
+        maxBuffer: 1024 * 1024,
+      }
+    );
     
     // Limpiar salida en caso de que traiga bloques markdown de código ```json o texto explicativo
     let cleanJson = stdout.trim();

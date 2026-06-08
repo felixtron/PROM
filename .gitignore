@@ -6,8 +6,12 @@ out/
 
 # Entornos y Secretos (PROHIBIDO SUBIR)
 .env*
+!.env.example
 .opencode.env
 auth.json
+
+# Artefactos de build de TypeScript
+*.tsbuildinfo
 
 # Logs y Debug
 npm-debug.log*

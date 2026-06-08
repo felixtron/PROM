@@ -1,53 +1,57 @@
 import { NextResponse } from 'next/server';
-import { validateAuthHeaders } from '../../../../lib/auth';
+import { verifySession, AuthError } from '../../../../lib/auth';
 import { getTenantContext, updateTenantContext } from '../../../../lib/db';
 
-/**
- * GET handler to retrieve the current onboarding state of a Tenant
- */
+export const runtime = 'nodejs';
+
+function headersToObject(request: Request): Record<string, string> {
+  const headersList: Record<string, string> = {};
+  request.headers.forEach((value, key) => {
+    headersList[key] = value;
+  });
+  return headersList;
+}
+
+function handleError(error: unknown, where: string) {
+  if (error instanceof AuthError) {
+    return NextResponse.json({ success: false, error: 'No autorizado.' }, { status: 401 });
+  }
+  console.error(`Error en ${where}:`, error);
+  return NextResponse.json({ success: false, error: 'Error interno del servidor.' }, { status: 500 });
+}
+
+/** GET: estado de onboarding del Tenant de la sesión. */
 export async function GET(request: Request) {
   try {
-    const headersList: Record<string, string> = {};
-    request.headers.forEach((value, key) => {
-      headersList[key] = value;
-    });
-
-    const session = validateAuthHeaders(headersList);
+    const session = await verifySession(headersToObject(request));
     const context = await getTenantContext(session.tenantId);
-
     return NextResponse.json({ success: true, context });
-  } catch (error: any) {
-    const status = error.message.includes('Unauthorized') ? 401 : 500;
-    return NextResponse.json({ success: false, error: error.message }, { status });
+  } catch (error) {
+    return handleError(error, 'GET /api/tenant/onboarding');
   }
 }
 
-/**
- * POST handler to update onboarding or brand settings of a Tenant
- */
+/** POST: actualiza configuración de marca/brief del Tenant de la sesión. */
 export async function POST(request: Request) {
   try {
-    const headersList: Record<string, string> = {};
-    request.headers.forEach((value, key) => {
-      headersList[key] = value;
-    });
-
-    const session = validateAuthHeaders(headersList);
-    const body = await request.json();
+    const session = await verifySession(headersToObject(request));
+    const body = await request.json().catch(() => null);
+    if (!body || typeof body !== 'object') {
+      return NextResponse.json({ success: false, error: 'Cuerpo inválido.' }, { status: 400 });
+    }
 
     const { brandIdentity, toneOfVoice, activeBrief, name, brandBookText } = body;
 
     const updated = await updateTenantContext(session.tenantId, {
-      ...(brandIdentity !== undefined && { brandIdentity }),
-      ...(toneOfVoice !== undefined && { toneOfVoice }),
+      ...(typeof brandIdentity === 'string' && { brandIdentity }),
+      ...(typeof toneOfVoice === 'string' && { toneOfVoice }),
       ...(activeBrief !== undefined && { activeBrief }),
-      ...(name !== undefined && { name }),
-      ...(brandBookText !== undefined && { brandBookText }),
+      ...(typeof name === 'string' && { name }),
+      ...(typeof brandBookText === 'string' && { brandBookText }),
     });
 
     return NextResponse.json({ success: true, context: updated });
-  } catch (error: any) {
-    const status = error.message.includes('Unauthorized') ? 401 : 500;
-    return NextResponse.json({ success: false, error: error.message }, { status });
+  } catch (error) {
+    return handleError(error, 'POST /api/tenant/onboarding');
   }
 }

@@ -1,11 +1,16 @@
 import { NextResponse } from 'next/server';
-import { validateAuthHeaders } from '../../../../lib/auth';
+import { verifySession, AuthError } from '../../../../lib/auth';
 import { updateTenantContext } from '../../../../lib/db';
 import { extractTextFromPdf } from '../../../../lib/pdf-reader';
 
+export const runtime = 'nodejs';
+
+const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
+const MAX_TEXT_CHARS = 50000;
+const ALLOWED_EXTENSIONS = ['.pdf', '.txt', '.md', '.json'];
+
 /**
- * Endpoint para subir la guía de diseño o catálogo en PDF o archivo de texto (.txt)
- * Extrae su texto y lo asocia permanentemente al contexto de marca del Tenant.
+ * Sube la guía de diseño en PDF/TXT, extrae su texto y lo asocia al contexto de marca.
  */
 export async function POST(request: Request) {
   try {
@@ -14,46 +19,61 @@ export async function POST(request: Request) {
       headersList[key] = value;
     });
 
-    const session = validateAuthHeaders(headersList);
+    const session = await verifySession(headersList);
 
     const formData = await request.formData();
-    const file = formData.get('file') as File | null;
+    const file = formData.get('file');
 
-    if (!file) {
+    if (!file || typeof file === 'string') {
       return NextResponse.json({ success: false, error: 'No se recibió ningún archivo.' }, { status: 400 });
     }
 
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
+    const fileName = file.name || 'archivo';
+    const lowerName = fileName.toLowerCase();
+    const ext = ALLOWED_EXTENSIONS.find((e) => lowerName.endsWith(e));
+
+    if (!ext) {
+      return NextResponse.json(
+        { success: false, error: 'Tipo de archivo no permitido. Usa PDF, TXT, MD o JSON.' },
+        { status: 415 }
+      );
+    }
+
+    if (file.size > MAX_FILE_BYTES) {
+      return NextResponse.json(
+        { success: false, error: 'El archivo excede el tamaño máximo permitido (10 MB).' },
+        { status: 413 }
+      );
+    }
+
+    const buffer = Buffer.from(await file.arrayBuffer());
 
     let extractedText = '';
-
-    if (file.name.toLowerCase().endsWith('.pdf')) {
+    if (ext === '.pdf') {
       extractedText = await extractTextFromPdf(buffer);
     } else {
-      // Intentar leer como texto plano (.txt, .md, .json)
       extractedText = buffer.toString('utf-8');
     }
 
-    // Limitar texto para que no sea inmanejable en los prompts (máximo 50,000 caracteres)
-    if (extractedText.length > 50000) {
-      extractedText = extractedText.substring(0, 50000) + '\n\n[...Texto truncado por exceder límite de 50k caracteres...]';
+    if (extractedText.length > MAX_TEXT_CHARS) {
+      extractedText = extractedText.substring(0, MAX_TEXT_CHARS) +
+        '\n\n[...Texto truncado por exceder límite de 50k caracteres...]';
     }
 
-    // Actualizar base de datos de Tenant de forma persistente
-    const updated = await updateTenantContext(session.tenantId, {
-      brandBookText: extractedText
-    });
+    const updated = await updateTenantContext(session.tenantId, { brandBookText: extractedText });
 
-    return NextResponse.json({ 
-      success: true, 
-      fileName: file.name,
+    return NextResponse.json({
+      success: true,
+      fileName,
       textLength: extractedText.length,
       brandBookTextSnippet: extractedText.substring(0, 300) + '...',
-      context: updated
+      context: updated,
     });
-  } catch (error: any) {
-    const status = error.message.includes('Unauthorized') ? 401 : 500;
-    return NextResponse.json({ success: false, error: error.message }, { status });
+  } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ success: false, error: 'No autorizado.' }, { status: 401 });
+    }
+    console.error('Error en /api/tenant/upload:', error);
+    return NextResponse.json({ success: false, error: 'No se pudo procesar el archivo.' }, { status: 500 });
   }
 }

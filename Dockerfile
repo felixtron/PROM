@@ -40,6 +40,6 @@ ENV HOSTNAME="0.0.0.0"
 
 # Healthcheck interno del contenedor según directiva ProSuite
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3000/api/auth/login', (r) => r.statusCode === 200 ? process.exit(0) : process.exit(1))"
+  CMD node -e "require('http').get('http://localhost:3000/', (r) => r.statusCode === 200 ? process.exit(0) : process.exit(1))"
 
 CMD ["npm", "start"]

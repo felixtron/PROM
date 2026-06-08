@@ -9,7 +9,7 @@ describe('Módulo: AI Advisor (Kimi-k2.6 Real Integration)', () => {
       spend: 50.00
     };
 
-    const analysis = await analyzeCampaignMetrics(metrics);
+    const analysis = await analyzeCampaignMetrics(metrics, 'tenant-1-alpha');
     
     expect(analysis).toBeDefined();
     expect(analysis.success).toBe(true);

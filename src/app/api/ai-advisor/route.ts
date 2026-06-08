@@ -1,35 +1,51 @@
 import { NextResponse } from 'next/server';
-import { validateAuthHeaders } from '../../../lib/auth';
+import { verifySession, AuthError } from '../../../lib/auth';
 import { analyzeCampaignMetrics } from '../../../lib/ai-advisor';
 
+export const runtime = 'nodejs';
+
+/** Valida que las métricas sean números finitos no negativos. */
+function parseMetrics(input: any): { impressions: number; clicks: number; spend: number } | null {
+  if (!input || typeof input !== 'object') return null;
+  const fields = ['impressions', 'clicks', 'spend'] as const;
+  const out: any = {};
+  for (const f of fields) {
+    const n = Number(input[f]);
+    if (!Number.isFinite(n) || n < 0) return null;
+    out[f] = n;
+  }
+  return out;
+}
+
 /**
- * Handler POST para delegar el análisis de pauta de forma real a Kimi-k2.6 usando OpenCode CLI.
+ * Handler POST para delegar el análisis de pauta a Kimi-k2.6 vía OpenCode CLI.
  */
 export async function POST(request: Request) {
   try {
-    // 1. Extraer cabeceras HTTP
     const headersList: Record<string, string> = {};
     request.headers.forEach((value, key) => {
       headersList[key] = value;
     });
 
-    // 2. Validar autenticación
-    const session = validateAuthHeaders(headersList);
+    const session = await verifySession(headersList);
 
-    // 3. Procesar cuerpo del payload
-    const body = await request.json();
-    const { metrics } = body;
+    const body = await request.json().catch(() => null);
+    const metrics = parseMetrics(body?.metrics);
 
     if (!metrics) {
-      return NextResponse.json({ success: false, error: 'Métricas ausentes.' }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'Métricas inválidas o ausentes.' },
+        { status: 400 }
+      );
     }
 
-    // 4. Invocar el análisis del consultor de IA pasando el Tenant ID para contextualizar la marca
     const result = await analyzeCampaignMetrics(metrics, session.tenantId);
-
     return NextResponse.json(result);
-  } catch (error: any) {
-    const status = error.message.includes('Unauthorized') ? 401 : 500;
-    return NextResponse.json({ success: false, error: error.message }, { status });
+  } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ success: false, error: 'No autorizado.' }, { status: 401 });
+    }
+    console.error('Error en /api/ai-advisor:', error);
+    return NextResponse.json({ success: false, error: 'Error interno del servidor.' }, { status: 500 });
   }
 }

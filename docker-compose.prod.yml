@@ -6,11 +6,15 @@ services:
     container_name: prom-app
     restart: unless-stopped
     read_only: false
+    # Los secretos se inyectan desde el entorno del host / .env (NO se versionan).
     environment:
       - PORT=3000
       - HOSTNAME=0.0.0.0
-      - OPENCODE_API_KEY=***ROTAR-OPENCODE-KEY***
+      - OPENCODE_API_KEY=${OPENCODE_API_KEY:?OPENCODE_API_KEY es requerido}
       - OPENCODE_DEFAULT_MODEL=opencode/kimi-k2.6
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET es requerido}
+      - ADMIN_EMAIL=${ADMIN_EMAIL:?ADMIN_EMAIL es requerido}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:?ADMIN_PASSWORD es requerido}
     networks:
       - traefik
     

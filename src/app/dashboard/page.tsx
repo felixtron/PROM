@@ -17,7 +17,50 @@ const mockCampaignsData: Record<string, any[]> = {
 
 export default function ProMDashboard() {
   const [activeTenant, setActiveTenant] = useState('tenant-1-alpha');
-  const [role] = useState('superuser'); // El consultor opera como Superuser
+  const [role, setRole] = useState('');
+  // Token JWT de sesión emitido por el backend tras el login (en memoria, no en localStorage).
+  const [token, setToken] = useState<string | null>(null);
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [loggingIn, setLoggingIn] = useState(false);
+
+  const authHeaders = (extra: Record<string, string> = {}): Record<string, string> => ({
+    Authorization: `Bearer ${token}`,
+    'x-tenant-id': activeTenant,
+    ...extra,
+  });
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoggingIn(true);
+    setLoginError('');
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: loginEmail, password: loginPassword }),
+      });
+      const data = await response.json();
+      if (data.success && data.token) {
+        setToken(data.token);
+        setRole(data.role);
+        setLoginPassword('');
+      } else {
+        setLoginError(data.error || 'No fue posible iniciar sesión.');
+      }
+    } catch {
+      setLoginError('Error de conexión con el servidor.');
+    } finally {
+      setLoggingIn(false);
+    }
+  };
+
+  const handleLogout = () => {
+    setToken(null);
+    setRole('');
+    setAiRecommendations([]);
+  };
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [loadingAi, setLoadingAi] = useState(false);
   const [aiRecommendations, setAiRecommendations] = useState<string[]>([]);
@@ -43,20 +86,18 @@ export default function ProMDashboard() {
 
   // Cargar campañas y contexto del Tenant cuando cambia el Tenant activo
   useEffect(() => {
+    if (!token) return;
     setCampaigns(mockCampaignsData[activeTenant] || []);
     setAiRecommendations([]); // Limpiar consejos previos
     fetchTenantOnboarding(activeTenant);
-  }, [activeTenant]);
+  }, [activeTenant, token]);
 
   // Cargar datos de Onboarding reales de la API
   const fetchTenantOnboarding = async (tenantId: string) => {
     setLoadingTenant(true);
     try {
       const response = await fetch('/api/tenant/onboarding', {
-        headers: {
-          'x-tenant-id': tenantId,
-          'x-user-role': role,
-        }
+        headers: { Authorization: `Bearer ${token}`, 'x-tenant-id': tenantId },
       });
       const data = await response.json();
       if (data.success && data.context) {
@@ -90,11 +131,7 @@ export default function ProMDashboard() {
     try {
       const response = await fetch('/api/tenant/onboarding', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-tenant-id': activeTenant,
-          'x-user-role': role,
-        },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           brandIdentity,
           toneOfVoice,
@@ -135,10 +172,7 @@ export default function ProMDashboard() {
     try {
       const response = await fetch('/api/tenant/upload', {
         method: 'POST',
-        headers: {
-          'x-tenant-id': activeTenant,
-          'x-user-role': role,
-        },
+        headers: authHeaders(),
         body: formData,
       });
       const data = await response.json();
@@ -166,11 +200,7 @@ export default function ProMDashboard() {
 
       const response = await fetch('/api/ai-advisor', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-tenant-id': activeTenant,
-          'x-user-role': role
-        },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           metrics: {
             impressions: totalImpressions,
@@ -201,11 +231,7 @@ export default function ProMDashboard() {
     try {
       const response = await fetch('/api/zernio', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-tenant-id': activeTenant,
-          'x-user-role': role
-        },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           campaign_id: campaigns[0]?.id || 'camp-default',
           content: newPostContent,
@@ -233,6 +259,53 @@ export default function ProMDashboard() {
       setSubmittingPost(false);
     }
   };
+
+  // Gate de autenticación: sin token de sesión válido no se muestra la consola.
+  if (!token) {
+    return (
+      <div className="min-h-screen bg-slate-900 text-slate-100 flex items-center justify-center p-8">
+        <form
+          onSubmit={handleLogin}
+          className="w-full max-w-sm bg-slate-800 border border-slate-700 rounded-xl p-8 shadow-lg"
+        >
+          <h1 className="text-2xl font-bold text-white flex items-center gap-2 mb-1">
+            🚀 ProM
+          </h1>
+          <p className="text-slate-400 text-sm mb-6">Consola de consultor — inicia sesión.</p>
+
+          <label className="block text-xs text-slate-400 font-semibold mb-1 uppercase tracking-wider">Correo</label>
+          <input
+            type="email"
+            autoComplete="username"
+            value={loginEmail}
+            onChange={(e) => setLoginEmail(e.target.value)}
+            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white mb-4 focus:outline-none focus:border-indigo-500"
+            required
+          />
+
+          <label className="block text-xs text-slate-400 font-semibold mb-1 uppercase tracking-wider">Contraseña</label>
+          <input
+            type="password"
+            autoComplete="current-password"
+            value={loginPassword}
+            onChange={(e) => setLoginPassword(e.target.value)}
+            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white mb-4 focus:outline-none focus:border-indigo-500"
+            required
+          />
+
+          {loginError && <p className="text-red-400 text-sm mb-4">{loginError}</p>}
+
+          <button
+            type="submit"
+            disabled={loggingIn}
+            className="w-full bg-indigo-500 hover:bg-indigo-600 disabled:opacity-50 text-white font-semibold py-2.5 rounded-lg transition-colors"
+          >
+            {loggingIn ? 'Entrando…' : 'Iniciar sesión'}
+          </button>
+        </form>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 p-8">
@@ -264,6 +337,12 @@ export default function ProMDashboard() {
               {role}
             </span>
           </div>
+          <button
+            onClick={handleLogout}
+            className="self-end text-xs text-slate-400 hover:text-white border border-slate-700 rounded-lg py-2 px-3 transition-colors"
+          >
+            Cerrar sesión
+          </button>
         </div>
       </div>
 
